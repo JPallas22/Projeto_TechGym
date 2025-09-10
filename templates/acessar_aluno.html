@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Acessar Área do Aluno{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="logo-title">Área do Aluno</div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+        <div class="card p-4">
+            <form method="post" action="{{ url_for('acessar_aluno') }}">
+                <div class="mb-3">
+                    <label class="form-label">Digite sua Matrícula</label>
+                    <input type="text" class="form-control" name="id_aluno" required>
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary">Acessar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
