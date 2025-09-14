@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block title %}Cadastrar Horário{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="logo-title">Cadastro de Horário</div>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+        
+        <div class="card p-4">
+            <form method="post" action="{{ url_for('cadastrar_horario') }}">
+                <!-- aluno_id escondido -->
+                <input type="hidden" name="aluno_id" value="{{ aluno.id }}">
+                
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Dia da Semana*</label>
+                        <select class="form-select" name="dia_semana" id="dia_semana" required>
+                            <option value="">Selecione</option>
+                            <option>Segunda</option>
+                            <option>Terça</option>
+                            <option>Quarta</option>
+                            <option>Quinta</option>
+                            <option>Sexta</option>
+                            <option>Sábado</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Hora*</label>
+                        <select class="form-select" name="hora" id="hora" required>
+                            <option value="">Selecione o dia primeiro</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Faixa*</label>
+                        <select class="form-select" name="faixa" required>
+                            <option value="">Selecione</option>
+                            <option value="Branca">Branca</option>
+                            <option value="Amarela">Amarela</option>
+                            <option value="Laranja">Laranja</option>
+                            <option value="Jade">Jade</option>
+                            <option value="Verde">Verde</option>
+                            <option value="Roxa">Roxa</option>
+                            <option value="Vermelha">Vermelha</option>
+                            <option value="Marrom Claro">Marrom Claro</option>
+                            <option value="Marrom Escuro">Marrom Escuro</option>
+                            <option value="Preta">Preta</option>
+                            <option value="Preta 1 Grau">Preta 1 Grau</option>
+                            <option value="Preta 2 Grau">Preta 2 Grau</option>
+                            <option value="Preta 3 Grau">Preta 3 Grau</option>
+                            <option value="Preta 4 Grau">Preta 4 Grau</option>
+                            <option value="Preta 5 Grau">Preta 5 Grau</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mt-4 d-flex justify-content-end gap-2">
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                    <a href="{{ url_for('admin_painel') }}" class="btn btn-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const horariosPorDia = {
+        'Segunda': ['08:30', '09:30', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
+        'Terça':   ['09:30', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
+        'Quarta':  ['09:30', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'],
+        'Quinta':  ['08:30', '09:30', '16:00', '17:00', '18:00', '19:00', '20:00'],
+        'Sexta':   ['09:30', '17:00', '18:00', '19:00'],
+        'Sábado':  ['09:00', '10:00', '11:00', '12:00']
+    };
+
+    const diaSelect = document.querySelector('#dia_semana');
+    const horaSelect = document.querySelector('#hora');
+
+    diaSelect.addEventListener('change', function () {
+        const dia = this.value;
+        const horarios = horariosPorDia[dia] || [];
+
+        horaSelect.innerHTML = '';
+        if (horarios.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'Nenhum horário disponível';
+            horaSelect.appendChild(opt);
+        } else {
+            const optDefault = document.createElement('option');
+            optDefault.value = '';
+            optDefault.textContent = 'Selecione';
+            horaSelect.appendChild(optDefault);
+
+            horarios.forEach(hora => {
+                const opt = document.createElement('option');
+                opt.value = hora;
+                opt.textContent = hora;
+                horaSelect.appendChild(opt);
+            });
+        }
+    });
+</script>
+{% endblock %}

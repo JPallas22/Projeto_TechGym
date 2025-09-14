@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2>Agendamentos</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Aluno</th>
+                <th>Dia</th>
+                <th>Hora</th>
+                <th>Faixa</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ag in agendamentos %}
+            <tr>
+                <td>{{ ag.aluno.nome }}</td>
+                <td>{{ ag.horario.dia_semana }}</td>
+                <td>{{ ag.horario.hora }}</td>
+                <td>{{ ag.aluno.faixa }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
