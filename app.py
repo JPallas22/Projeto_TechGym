@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask import flash, get_flashed_messages
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'admin123'
@@ -24,9 +25,9 @@ class Usuario(db.Model):
         return f'<Usuario {self.nome}>'
 
 class Aluno(db.Model):
-    id = db.Column(db.Integer, primary_key=True)  # ID do sistema
-    numero_matricula = db.Column(db.String(10), unique=True, nullable=False)  # Gerado automaticamente
-    numero_aluno = db.Column(db.String(10), unique=True, nullable=False)  # Inserido manualmente
+    id = db.Column(db.Integer, primary_key=True)
+    numero_matricula = db.Column(db.String(10), unique=True, nullable=False)
+    numero_aluno = db.Column(db.String(10), unique=True, nullable=False)
     nome = db.Column(db.String(100), nullable=False)
     idade = db.Column(db.Integer, nullable=False)
     endereco = db.Column(db.String(150), nullable=False)
@@ -94,12 +95,9 @@ def acessar_aluno():
 
         aluno = Aluno.query.filter_by(numero_matricula=matricula).first()
         if aluno and aluno.cpf.replace('.', '').replace('-', '')[:4] == senha:
-            horarios = Horario.query.filter_by(faixa=aluno.faixa).all()
-            # Se seu template se chama "cadastrar_horario.html", use esse nome aqui:
-            return render_template('cadastrar_horario.html', aluno=aluno, horarios=horarios)
-        else:
-            flash('Matrícula ou senha inválidos!', 'danger')
+            return render_template('acessar_aluno.html', aluno=aluno)
 
+        flash('Matrícula ou senha inválidos!', 'danger')
     return render_template('acessar_aluno.html')
 
 @app.route('/login_admin', methods=['GET', 'POST'])
@@ -141,7 +139,7 @@ def cadastro_admin():
         senha = request.form['senha']
 
         novo_admin = Admin(email=email)
-        novo_admin.set_senha(senha)  # Criptografa a senha!
+        novo_admin.set_senha(senha)
 
         db.session.add(novo_admin)
         db.session.commit()
@@ -160,36 +158,72 @@ horarios_validos = {
     'Sábado':    ['09:00', '10:00', '11:00', '12:00']
 }
 
-@app.route('/cadastrar_horario', methods=['POST'])
+@app.route('/cadastrar_horario', methods=['GET', 'POST'])
 def cadastrar_horario():
-    aluno_id = request.form.get('aluno_id')
-    dia_semana = request.form.get('dia_semana')
-    hora = request.form.get('hora')
-    faixa = request.form.get('faixa')
+    if request.method == 'GET':
+        aluno_id = request.args.get('aluno_id', type=int)
+        if not aluno_id:
+            flash('Aluno não identificado.', 'warning')
+            return redirect(url_for('acessar_aluno'))
 
-    if not aluno_id or not dia_semana or not hora or not faixa:
-        flash('Preencha todos os campos!', 'warning')
-        return redirect(url_for('acessar_aluno'))
+        aluno = Aluno.query.get_or_404(aluno_id)
+        return render_template('cadastrar_horario.html', aluno=aluno)
 
-    # Criar novo horário se não existir
-    horario = Horario.query.filter_by(dia_semana=dia_semana, hora=hora, faixa=faixa).first()
-    if not horario:
-        horario = Horario(dia_semana=dia_semana, hora=hora, faixa=faixa)
-        db.session.add(horario)
+    elif request.method == 'POST':
+        aluno_id = request.form.get('aluno_id')
+        dia_semana = request.form.get('dia_semana')
+        hora = request.form.get('hora')
+        faixa = request.form.get('faixa')
+
+        if not aluno_id:
+            flash('Aluno não identificado!', 'danger')
+            return redirect(url_for('acessar_aluno'))
+
+        if not dia_semana or not hora or not faixa:
+            flash('Preencha todos os campos para continuar o agendamento.', 'warning')
+            return redirect(url_for('cadastrar_horario', aluno_id=aluno_id))
+
+        hoje = datetime.now()
+        dia_semana_atual = hoje.strftime('%A')
+        mapa_dias = {
+            'Monday': 'Segunda',
+            'Tuesday': 'Terça',
+            'Wednesday': 'Quarta',
+            'Thursday': 'Quinta',
+            'Friday': 'Sexta',
+            'Saturday': 'Sábado',
+            'Sunday': 'Domingo'
+        }
+        dia_atual_portugues = mapa_dias[dia_semana_atual]
+
+        if dia_semana == dia_atual_portugues and dia_semana != 'Sábado':
+
+            if hoje.hour >= 14:
+                flash('Regra de agendamento: para aulas no mesmo dia (segunda a sexta), o agendamento deve ser feito até as 14h.', 'danger')
+                return redirect(url_for('meus_agendamentos', aluno_id=aluno_id))
+
+        if dia_semana == 'Sábado':
+            if not (dia_atual_portugues == 'Sexta' and 16 <= hoje.hour < 20):
+                flash('Regra de agendamento: aulas de sábado só podem ser agendadas na sexta-feira, entre 16h e 20h.', 'danger')
+                return redirect(url_for('meus_agendamentos', aluno_id=aluno_id))
+
+        horario = Horario.query.filter_by(dia_semana=dia_semana, hora=hora, faixa=faixa).first()
+        if not horario:
+            horario = Horario(dia_semana=dia_semana, hora=hora, faixa=faixa)
+            db.session.add(horario)
+            db.session.commit()
+
+        ja_existe = Agendamento.query.filter_by(aluno_id=aluno_id, horario_id=horario.id).first()
+        if ja_existe:
+            flash('Você já possui um agendamento nesse horário!', 'warning')
+            return redirect(url_for('meus_agendamentos', aluno_id=aluno_id))
+
+        agendamento = Agendamento(aluno_id=aluno_id, horario_id=horario.id)
+        db.session.add(agendamento)
         db.session.commit()
 
-    # Verifica se já existe agendamento
-    ja_existe = Agendamento.query.filter_by(aluno_id=aluno_id, horario_id=horario.id).first()
-    if ja_existe:
-        flash('Você já possui esse agendamento!', 'warning')
+        flash('Horário cadastrado com sucesso!', 'success')
         return redirect(url_for('meus_agendamentos', aluno_id=aluno_id))
-
-    agendamento = Agendamento(aluno_id=aluno_id, horario_id=horario.id)
-    db.session.add(agendamento)
-    db.session.commit()
-
-    flash('Horário cadastrado com sucesso!', 'success')
-    return redirect(url_for('meus_agendamentos', aluno_id=aluno_id))
 
 @app.route('/meus_agendamentos/<int:aluno_id>')
 def meus_agendamentos(aluno_id):
@@ -341,6 +375,32 @@ def editar_aluno(aluno_id):
         return redirect(url_for('listar_alunos'))
 
     return render_template('editar_aluno.html', aluno=aluno)
+
+@app.route('/relatorio_agendamentos', methods=['GET', 'POST'])
+@login_required
+def relatorio_agendamentos():
+    filtro_dia = request.args.get('dia_semana')
+    filtro_hora = request.args.get('hora')
+    filtro_faixa = request.args.get('faixa')
+
+    query = Agendamento.query.join(Aluno).join(Horario)
+
+    if filtro_dia:
+        query = query.filter(Horario.dia_semana == filtro_dia)
+    if filtro_hora:
+        query = query.filter(Horario.hora == filtro_hora)
+    if filtro_faixa:
+        query = query.filter(Horario.faixa == filtro_faixa)
+
+    agendamentos = query.all()
+
+    return render_template(
+        'relatorio_agendamentos.html',
+        agendamentos=agendamentos,
+        filtro_dia=filtro_dia,
+        filtro_hora=filtro_hora,
+        filtro_faixa=filtro_faixa
+    )
 
 @app.route('/logout')
 @login_required
