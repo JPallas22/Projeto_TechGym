@@ -3,7 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask import flash, get_flashed_messages
-from datetime import datetime
+from datetime import datetime, date
+from calendar import monthrange
+import json
 
 app = Flask(__name__)
 app.secret_key = 'admin123'
@@ -15,6 +17,21 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login_admin'
+
+HOLIDAYS_PATH = 'config/holidays.json'
+
+def load_holidays():
+    try:
+        with open(HOLIDAYS_PATH, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return set(str(x) for x in data)
+    except Exception:
+        return set()
+
+def is_holiday(d: date) -> bool:
+    return d.isoformat() in load_holidays()
+
+CUTOFF_HOUR = 14
 
 class Usuario(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -61,7 +78,7 @@ class Admin(db.Model, UserMixin):
 
     def verificar_senha(self, senha):
         return check_password_hash(self.senha_hash, senha)
-    
+
 class Horario(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     dia_semana = db.Column(db.String(20), nullable=False)
@@ -70,7 +87,7 @@ class Horario(db.Model):
 
     def __repr__(self):
         return f"<Horario {self.dia_semana} {self.hora} - {self.faixa}>"
-    
+
 class Agendamento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     aluno_id = db.Column(db.Integer, db.ForeignKey('aluno.id'), nullable=False)
@@ -78,6 +95,7 @@ class Agendamento(db.Model):
 
     aluno = db.relationship('Aluno', backref='agendamentos')
     horario = db.relationship('Horario', backref='agendamentos')
+
 
 @login_manager.user_loader
 def load_user(admin_id):
@@ -89,16 +107,23 @@ def index():
 
 @app.route('/acessar_aluno', methods=['GET', 'POST'])
 def acessar_aluno():
+    aluno = None
     if request.method == 'POST':
         matricula = request.form['matricula']
         senha = request.form['senha']
 
         aluno = Aluno.query.filter_by(numero_matricula=matricula).first()
         if aluno and aluno.cpf.replace('.', '').replace('-', '')[:4] == senha:
-            return render_template('acessar_aluno.html', aluno=aluno)
+            return render_template('acessar_aluno.html',
+                                   aluno=aluno,
+                                   CUTOFF_HOUR=CUTOFF_HOUR,
+                                   NOW_HOUR=datetime.now().hour)
 
         flash('Matrícula ou senha inválidos!', 'danger')
-    return render_template('acessar_aluno.html')
+    return render_template('acessar_aluno.html',
+                           aluno=aluno,
+                           CUTOFF_HOUR=CUTOFF_HOUR,
+                           NOW_HOUR=datetime.now().hour)
 
 @app.route('/login_admin', methods=['GET', 'POST'])
 def login_admin():
@@ -122,11 +147,13 @@ def login_aluno():
         senha = request.form['senha']
 
         aluno = Aluno.query.filter_by(numero_matricula=matricula).first()
-
         if aluno and aluno.cpf.replace('.', '').replace('-', '')[:4] == senha:
             faixa = aluno.faixa
             horarios = Horario.query.filter_by(faixa=faixa).all()
-            return render_template('horarios_aluno.html', aluno=aluno, horarios=horarios)
+            return render_template('horarios_aluno.html',
+                                   aluno=aluno,
+                                   horarios=horarios,
+                                   CUTOFF_HOUR=CUTOFF_HOUR)
         else:
             flash('Matrícula ou senha inválidos!', 'danger')
 
@@ -197,7 +224,6 @@ def cadastrar_horario():
         dia_atual_portugues = mapa_dias[dia_semana_atual]
 
         if dia_semana == dia_atual_portugues and dia_semana != 'Sábado':
-
             if hoje.hour >= 14:
                 flash('Regra de agendamento: para aulas no mesmo dia (segunda a sexta), o agendamento deve ser feito até as 14h.', 'danger')
                 return redirect(url_for('meus_agendamentos', aluno_id=aluno_id))
@@ -312,13 +338,27 @@ def agendar_aula(aluno_id):
     aluno = Aluno.query.get_or_404(aluno_id)
 
     agendamento_existente = Agendamento.query.filter_by(aluno_id=aluno_id, horario_id=horario_id).first()
-
     if agendamento_existente:
         faixa = aluno.faixa
         horarios = Horario.query.filter_by(faixa=faixa).all()
-
         flash('Você já agendou esse horário!', 'danger')
-        return render_template('horarios_aluno.html', aluno=aluno, horarios=horarios)
+        return render_template('horarios_aluno.html',
+                               aluno=aluno,
+                               horarios=horarios,
+                               CUTOFF_HOUR=CUTOFF_HOUR)
+
+    horario_escolhido = Horario.query.get_or_404(horario_id)
+    hoje = datetime.now()
+    weekday_map = {0: 'Segunda', 1: 'Terça', 2: 'Quarta', 3: 'Quinta', 4: 'Sexta', 5: 'Sábado', 6: 'Domingo'}
+    hoje_nome = weekday_map[hoje.weekday()]
+    if hoje_nome == horario_escolhido.dia_semana and hoje.hour >= CUTOFF_HOUR:
+        faixa = aluno.faixa
+        horarios = Horario.query.filter_by(faixa=faixa).all()
+        flash(f'Agendamento para hoje só permitido até as {CUTOFF_HOUR}:00.', 'danger')
+        return render_template('horarios_aluno.html',
+                               aluno=aluno,
+                               horarios=horarios,
+                               CUTOFF_HOUR=CUTOFF_HOUR)
 
     novo_agendamento = Agendamento(aluno_id=aluno_id, horario_id=horario_id)
     db.session.add(novo_agendamento)
@@ -402,14 +442,75 @@ def relatorio_agendamentos():
         filtro_faixa=filtro_faixa
     )
 
+@app.route('/calendar')
+def calendar_view():
+    today = datetime.now().date()
+    holidays_list = sorted(load_holidays())
+    return render_template('calendar.html', year=today.year, month=today.month, holidays=holidays_list)
+
+@app.route('/api/available-days')
+def api_available_days():
+    try:
+        year = int(request.args.get('year'))
+        month = int(request.args.get('month'))
+    except (TypeError, ValueError):
+        today = datetime.now().date()
+        year, month = today.year, today.month
+
+    _, last_day = monthrange(year, month)
+    available = []
+    for day in range(1, last_day + 1):
+        d = date(year, month, day)
+        if d.weekday() == 6:
+            continue
+        if is_holiday(d):
+            continue
+        available.append(d.isoformat())
+
+    return {'year': year, 'month': month, 'available_days': available, 'holidays': sorted(load_holidays())}
+
+@app.route('/editar_calendario', methods=['GET', 'POST'])
+@login_required
+def editar_calendario():
+    if not current_user.is_authenticated:
+        flash('Acesso negado!', 'danger')
+        return redirect(url_for('index'))
+
+    holidays = sorted(load_holidays())
+
+    if request.method == 'POST':
+        nova_data = request.form.get('data')
+        if nova_data:
+            hs = load_holidays()
+            hs.add(nova_data)
+            with open(HOLIDAYS_PATH, 'w', encoding='utf-8') as f:
+                json.dump(sorted(hs), f, indent=2, ensure_ascii=False)
+            flash(f'Feriado {nova_data} adicionado com sucesso!', 'success')
+        return redirect(url_for('editar_calendario'))
+
+    return render_template('editar_calendario.html', holidays=holidays)
+
+@app.route('/remover_feriado/<data>')
+@login_required
+def remover_feriado(data):
+    hs = load_holidays()
+    if data in hs:
+        hs.remove(data)
+        with open(HOLIDAYS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(sorted(hs), f, indent=2, ensure_ascii=False)
+        flash(f'Feriado {data} removido com sucesso!', 'success')
+    else:
+        flash('Data não encontrada.', 'warning')
+    return redirect(url_for('editar_calendario'))
+
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('index'))
 
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-
     app.run(debug=True)

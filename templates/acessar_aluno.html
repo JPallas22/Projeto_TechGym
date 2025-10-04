@@ -1,46 +1,62 @@
 {% extends "base.html" %}
 {% block title %}Acessar Aluno{% endblock %}
 {% block content %}
+
 <div class="row justify-content-center">
-    <div class="col-md-8">
-        <div class="logo-title">Acessar Aluno</div>
+  <div class="col-md-6">
+    <div class="logo-title">Acessar Aluno</div>
 
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
-            </div>
-            {% endfor %}
-        {% endif %}
-        {% endwith %}
+    <div class="card p-4 mb-4">
+      <a href="{{ url_for('calendar_view') }}" class="btn btn-light mb-3">Ver Calendário de Aulas</a>
 
-        {% if aluno %}
-        <div class="card p-4 mb-4">
-            <p><strong>Nome:</strong> {{ aluno.nome }}</p>
-            <p><strong>Faixa:</strong> {{ aluno.faixa }}</p>
+      {% if aluno %}
+        <p><b>Nome:</b> {{ aluno.nome }}</p>
+        <p><b>Faixa:</b> {{ aluno.faixa }}</p>
 
-            <div class="mt-3">
-                <a href="{{ url_for('meus_agendamentos', aluno_id=aluno.id) }}" class="btn btn-primary">Ver meus agendamentos</a>
-                <a href="{{ url_for('cadastrar_horario', aluno_id=aluno.id) }}" class="btn btn-success">Agendar horário</a>
-            </div>
-        </div>
-        {% else %}
-        <div class="card p-4">
-            <form method="POST">
-                <div class="mb-3">
-                    <label for="matricula" class="form-label">Matrícula</label>
-                    <input type="text" class="form-control" name="matricula" required>
-                </div>
-                <div class="mb-3">
-                    <label for="senha" class="form-label">Senha (4 primeiros dígitos do CPF)</label>
-                    <input type="password" class="form-control" name="senha" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Entrar</button>
-            </form>
-        </div>
-        {% endif %}
+        <a href="{{ url_for('meus_agendamentos', aluno_id=aluno.id) }}" class="btn btn-warning">Ver meus agendamentos</a>
+
+        <!-- Botão Agendar Horário com ID para desabilitar -->
+        <a id="btnAgendar"
+           href="{{ url_for('cadastrar_horario', aluno_id=aluno.id) }}"
+           class="btn btn-success">
+           Agendar horário
+        </a>
+      {% else %}
+        <form method="POST">
+          <div class="mb-3">
+            <label for="matricula" class="form-label">Matrícula</label>
+            <input type="text" name="matricula" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label for="senha" class="form-label">Senha (4 primeiros dígitos do CPF)</label>
+            <input type="password" name="senha" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Acessar</button>
+        </form>
+      {% endif %}
     </div>
+  </div>
 </div>
+
+<!-- Script para desabilitar botão após 14h -->
+<script>
+(function(){
+  const cutoff = {{ CUTOFF_HOUR if CUTOFF_HOUR is defined else 14 }};
+  const nowHour = {{ NOW_HOUR if NOW_HOUR is defined else 0 }};
+
+  if (nowHour >= cutoff) {
+    const btn = document.getElementById('btnAgendar');
+    if (btn) {
+      btn.classList.remove('btn-success');
+      btn.classList.add('btn-secondary', 'disabled');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        alert('Agendamento para hoje permitido até ' + cutoff + ':00.');
+      });
+    }
+  }
+})();
+</script>
+
 {% endblock %}
